@@ -1,23 +1,17 @@
 package main.java.logger;
 
 import main.java.commons.CustomEmailSender;
-import main.java.commons.CustomFileWriter;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
+import main.java.commons.DefaultCustomEmailSender;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
 import java.io.IOException;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.io.PrintWriter;
+import java.util.Calendar;
 import java.util.LinkedList;
 
-@Service
 public class DefaultCustomLogger implements CustomLogger {
 
-    /**
-     * A file writer service
-     */
-    private CustomFileWriter customFileWriter;
 
     /**
      * A email sender service
@@ -29,11 +23,8 @@ public class DefaultCustomLogger implements CustomLogger {
      */
     private LinkedList<String> adminEmails;
 
-    @Autowired
-    public DefaultCustomLogger(CustomFileWriter customFileWriter, CustomEmailSender customEmailSender) {
-        this.customFileWriter = customFileWriter;
-        this.customEmailSender = customEmailSender;
-
+    public DefaultCustomLogger() {
+        this.customEmailSender = new DefaultCustomEmailSender();
         adminEmails = new LinkedList<>();
         adminEmails.add("admin@miro.com");
         adminEmails.add("duty@miro.com");
@@ -46,58 +37,50 @@ public class DefaultCustomLogger implements CustomLogger {
      * @return log's filename
      */
     private String getLogName() {
-        DateFormat df = new SimpleDateFormat("yy_MM_dd");
-        Date currentDate = new Date();
-
-        StringBuilder builder = new StringBuilder();
-        builder.append(df.format(currentDate));
-        builder.append("_log.log");
-
-        return builder.toString();
+        return Calendar.getInstance().getTime().toString()
+                + "_log.log";
     }
 
     /**
      * Gets an error message
-     * @param level Log level
-     * @param message income message's text
+     *
+     * @param level   Log level
+     * @param message message's text
      * @return error's message text
      */
     private String getMessage(LogLevel level, String message) {
-        String delimiter = "    ";
-        StringBuilder builder = new StringBuilder();
-
-        DateFormat df = new SimpleDateFormat("dd/MM/yy HH:mm:ss");
-        Date currentDate = new Date();
-        builder.append(df.format(currentDate));
-        builder.append(delimiter);
-
-        switch (level) {
-            case Debug:
-                builder.append("DBG");
-            case Error:
-                builder.append("ERR");
-            case Warning:
-                builder.append("WRN");
-            default:
-                builder.append("UNKNOWN");
-        }
-
-        builder.append(delimiter);
-        builder.append(message);
-
-        return builder.toString();
+        return Calendar.getInstance().getTime().toString() +
+                level.getShortName() +
+                message;
     }
 
     /**
-     * Logs a message with any level
-     * @param level message level
+     * Appends a text line into file
+     *
+     * @param filename filename
+     * @param message  message
+     * @throws IOException
+     */
+    private void appendToFile(String filename, String message) throws IOException {
+        FileWriter fileWriter = new FileWriter(filename, true);
+        BufferedWriter bufferedWriter = new BufferedWriter(fileWriter);
+        PrintWriter print = new PrintWriter(bufferedWriter);
+        print.println(message);
+        print.close();
+    }
+
+    /**
+     * Logs a message with any level into a log file.
+     * Also sends an email to all admins if the error level is error
+     *
+     * @param level   message level
      * @param message message
      * @throws IOException possible exception
      */
     @Override
     public void log(LogLevel level, String message) throws IOException {
         String errorMessage = getMessage(level, message);
-        customFileWriter.appendToFile(getLogName(), errorMessage);
+        appendToFile(getLogName(), errorMessage);
         if (level == LogLevel.Error) {
             adminEmails.forEach(email ->
                     customEmailSender.sendEmail(email, "Application error", errorMessage));
@@ -105,8 +88,7 @@ public class DefaultCustomLogger implements CustomLogger {
     }
 
     /**
-     * Logs a message with an error level
-     * @param message message
+     * Logs a message with an error level into a file and sends an email all admins
      */
     @Override
     public void logError(String message) {
@@ -117,8 +99,15 @@ public class DefaultCustomLogger implements CustomLogger {
     }
 
     /**
-     * Logs a message with a warning level
-     * @param message message
+     * Logs an exception with an error level into a file and sends an email all admins.
+     */
+    @Override
+    public void logError(Throwable exception) {
+        logError(exception.getMessage());
+    }
+
+    /**
+     * Logs an exception with a warning level into file
      */
     @Override
     public void logWarning(String message) {
@@ -129,8 +118,8 @@ public class DefaultCustomLogger implements CustomLogger {
     }
 
     /**
-     * Logs a message with a debug level
-     * @param message message
+     * Logs a message with a debug level into a file
+     * Returns true if a recording was successful or false if it fails
      */
     @Override
     public boolean logDebug(String message) {
@@ -140,14 +129,5 @@ public class DefaultCustomLogger implements CustomLogger {
         } catch (IOException ex) {
             return false;
         }
-    }
-
-    /**
-     * Log error from exception
-     * @param exception exception
-     */
-    @Override
-    public void logError(Throwable exception) {
-        logError(exception.getMessage());
     }
 }
